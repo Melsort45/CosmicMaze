@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cosmic RPG Maze Visualizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background-color: #030712;
+      color: #f3f4f6;
+      overflow-x: hidden;
+    }
+    .pixel-font { font-family: 'Press Start 2P', monospace; }
+    .stars-bg {
+      background-image: 
+        radial-gradient(2px 2px at 20px 30px, #e2e8f0, rgba(0,0,0,0)),
+        radial-gradient(2px 2px at 40px 70px, #38bdf8, rgba(0,0,0,0)),
+        radial-gradient(1px 1px at 90px 40px, #f472b6, rgba(0,0,0,0)),
+        radial-gradient(2px 2px at 160px 120px, #a855f7, rgba(0,0,0,0));
+      background-repeat: repeat;
+      background-size: 200px 200px;
+    }
+    .vn-container {
+      background: linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(3,7,18,0.98) 100%);
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.3), inset 0 0 15px rgba(56, 189, 248, 0.1);
+    }
+    .pixel-btn {
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    .pixel-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    }
+    .pixel-btn:active { transform: translateY(1px); }
+  </style>
+</head>
+<body class="stars-bg min-h-screen flex flex-col items-center justify-between p-2 md:p-6 text-slate-100">
+
+  <!-- HUD SUPERIOR -->
+  <header class="w-full max-w-6xl flex flex-wrap justify-between items-center bg-slate-900/80 border border-cyan-500/40 p-3 rounded-lg backdrop-blur-md mb-2 shadow-lg gap-2">
+    <div class="flex items-center space-x-3">
+      
+      <div>
+        <h1 class="pixel-font text-xs sm:text-sm text-cyan-300 tracking-wider">COSMIC MAZE EXPLORER</h1>
+        <p class="text-xs text-slate-400">N-Ary Tree Solver</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-4 text-xs">
+      <div class="flex items-center space-x-2 bg-slate-950 px-2 py-1 rounded border border-cyan-800">
+        <label for="speedSelect" class="text-amber-400 pixel-font text-[10px]">VELOCIDAD:</label>
+        <select id="speedSelect" onchange="updateSpeed(this.value)" class="bg-slate-900 border border-cyan-500/50 text-cyan-300 text-xs rounded px-1 py-0.5 outline-none">
+          <option value="250">1x Normal</option>
+          <option value="80">3x Rápido</option>
+          <option value="20" selected>10x Turbo</option>
+          <option value="2">50x Ultra</option>
+          <option value="0">Instantaneo</option>
+        </select>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <label for="mapSelect" class="text-slate-300">Laberinto:</label>
+        <select id="mapSelect" onchange="loadPresetMap(this.value)" class="bg-slate-950 border border-cyan-500/50 text-cyan-300 text-xs rounded px-2 py-1 outline-none">
+          <option value="lab1">Kats World</option>
+          <option value="lab2">Alcatraz</option>
+          <option value="lab3">Mels System</option>
+        </select>
+      </div>
+
+      <label class="pixel-btn pixel-font text-[10px] bg-cyan-950 hover:bg-cyan-800 text-cyan-300 border border-cyan-400 px-3 py-1.5 rounded cursor-pointer">
+        <span>Importar archivo</span>
+        <input type="file" id="fileInput" accept=".in,.txt" onchange="handleFileUpload(event)" class="hidden" />
+      </label>
+    </div>
+  </header>
+
+  <!-- LIENZO PRINCIPAL (CANVAS) -->
+  <main class="w-full max-w-6xl flex-1 flex flex-col items-center justify-center relative my-2">
+    <div class="relative w-full flex items-center justify-center bg-slate-950/80 border border-slate-800 rounded-xl p-2 md:p-4 shadow-2xl min-h-[380px]">
+      <canvas id="gameCanvas" class="rounded border border-cyan-900/60 shadow-inner max-w-full max-h-[50vh]"></canvas>
+
+      <div id="btnContinueContainer" class="hidden absolute bottom-4 right-4 z-20">
+        <button onclick="resumeDialogueAfterInspection()" class="pixel-btn pixel-font text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2 border-2 border-amber-300 animate-pulse">
+          <span>CONTINUAR</span>
+          <span>➔</span>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- PANEL DE NOVELA VISUAL -->
+  <footer class="w-full max-w-6xl relative mt-2">
+    <div class="absolute -top-48 left-4 md:left-12 z-0 pointer-events-none flex items-end">
+      <img id="characterSprite" src="Normal01.gif" class="h-auto drop-shadow-[0_0_15px_rgba(56,189,248,0.6)]" style="width: 300px;" alt="Personaje Principal">
+    </div>
+
+    <div class="vn-container rounded-xl p-4 md:p-6 pt-6 relative z-10">
+      <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 mb-3">
+        <span id="speakerName" class="pixel-font text-xs text-cyan-400 tracking-wider">GUIDE-BOT // NAVI</span>
+        <span class="text-xs text-slate-500 font-mono">ASTRO-NAVI v2.4</span>
+      </div>
+
+      <div class="min-h-[50px] mb-4">
+        <p id="dialogueText" class="text-sm md:text-base text-cyan-100 leading-relaxed font-mono"></p>
+      </div>
+
+      <div id="choicesContainer" class="flex flex-wrap gap-2 pt-2 border-t border-slate-800"></div>
+    </div>
+  </footer>
+
+  <script>
+    // --- MAPAS PREDEFINIDOS ---
+    const PRESET_MAPS = {
+      lab1: { rows: 4, cols: 4, grid: [['B','1','1','0'],['1','1','0','0'],['0','1','1','A'],['0','1','0','1']] },
+      lab2: { rows: 5, cols: 5, grid: [['A','1','1','1','0'],['0','0','1','0','0'],['1','1','1','1','1'],['1','0','0','0','1'],['1','1','1','0','B']] },
+      lab3: { rows: 6, cols: 6, grid: [['A','1','0','1','1','1'],['1','1','0','1','0','1'],['0','1','1','1','0','1'],['1','0','0','1','1','1'],['1','1','1','0','0','1'],['0','0','1','1','1','B']] },
+      lab4: { rows: 5, cols: 6, grid: [['1','1','1','1','1','B'],['1','0','0','0','0','1'],['1','1','1','1','0','1'],['0','0','0','1','0','1'],['A','1','1','1','1','1']] },
+      lab5: { rows: 6, cols: 5, grid: [['A','1','1','1','1'],['0','0','0','0','1'],['1','1','1','0','1'],['1','0','1','0','1'],['1','0','1','1','1'],['1','1','1','0','B']] },
+      lab6: { rows: 7, cols: 7, grid: [['A','1','1','0','1','1','1'],['0','0','1','0','1','0','1'],['1','1','1','1','1','0','1'],['1','0','0','0','0','0','1'],['1','1','1','1','1','1','1'],['0','0','0','0','0','0','1'],['1','1','1','1','1','1','B']] }
+    };
+
+    // --- ESTADO GLOBAL ---
+    let currentMapKey = 'lab1';
+    let rows = PRESET_MAPS[currentMapKey].rows;
+    let cols = PRESET_MAPS[currentMapKey].cols;
+    let grid = PRESET_MAPS[currentMapKey].grid;
+
+    class TreeNode {
+      constructor(r, c, parent = null) {
+        this.r = r;
+        this.c = c;
+        this.key = `${r},${c}`;
+        this.parent = parent;
+        this.children = [];
+      }
+    }
+
+    let rootNode = null;
+    let endNode = null;
+    const dr = [-1, 1, 0, 0];
+    const dc = [0, 0, -1, 1];
+
+    let visitedTiles = new Set();
+    let activePathSet = new Set();
+    let activeCurrentTile = null;
+    let isAnimating = false;
+    let pendingDialogueKey = null;
+    let animSpeed = 20;
+
+    // --- INICIALIZACIÓN Y EVENTOS ---
+    window.onload = () => {
+      initMaze();
+      window.addEventListener('resize', drawGameCanvas);
+      showDialogue('welcome');
+    };
+
+    function updateSpeed(val) {
+      animSpeed = parseInt(val);
+    }
+
+    function loadPresetMap(key) {
+      if (isAnimating) return;
+      currentMapKey = key;
+      rows = PRESET_MAPS[key].rows;
+      cols = PRESET_MAPS[key].cols;
+      grid = PRESET_MAPS[key].grid;
+      initMaze();
+      showDialogue('welcome');
+    }
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result.trim();
+        parseInFile(text);
+      };
+      reader.readAsText(file);
+    }
+
+    function parseInFile(content) {
+      const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length < 2) return;
+
+      const firstLine = lines[0].split(/\s+/);
+      rows = parseInt(firstLine[0]);
+      cols = parseInt(firstLine[1]);
+
+      grid = [];
+      for (let i = 1; i <= rows && i < lines.length; i++) {
+        const line = lines[i];
+        grid.push(line.includes(' ') ? line.split(/\s+/) : line.split(''));
+      }
+
+      initMaze();
+      showDialogue('fileLoaded');
+    }
+
+    function initMaze() {
+      visitedTiles.clear();
+      activePathSet.clear();
+      activeCurrentTile = null;
+
+      let startPos = null, endPos = null;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (grid[r][c] === 'A') startPos = { r, c };
+          if (grid[r][c] === 'B') endPos = { r, c };
+        }
+      }
+
+      let visitedTree = new Set();
+      rootNode = new TreeNode(startPos.r, startPos.c);
+      endNode = null;
+
+      const isValid = (r, c) => 
+        r >= 0 && r < rows && c >= 0 && c < cols && 
+        grid[r][c] !== '0' && !visitedTree.has(`${r},${c}`);
+
+      function buildTree(curr) {
+        visitedTree.add(curr.key);
+        if (curr.r === endPos.r && curr.c === endPos.c) endNode = curr;
+
+        for (let i = 0; i < 4; i++) {
+          let nr = curr.r + dr[i], nc = curr.c + dc[i];
+          if (isValid(nr, nc)) {
+            let child = new TreeNode(nr, nc, curr);
+            curr.children.push(child);
+            buildTree(child);
+          }
+        }
+      }
+
+      buildTree(rootNode);
+      drawGameCanvas();
+    }
+
+    // --- ALGORITMOS DE RECORRIDO (CON EARLY STOP) ---
+    function getBFSSequence() {
+      let seq = [], q = [rootNode];
+      while (q.length > 0) {
+        let curr = q.shift();
+        seq.push(curr);
+        if (endNode && curr.r === endNode.r && curr.c === endNode.c) break;
+        for (let ch of curr.children) q.push(ch);
+      }
+      return seq;
+    }
+
+    function getDFSPreorderSequence() {
+      let seq = [], foundEnd = false;
+      function recurse(node) {
+        if (!node || foundEnd) return;
+        seq.push(node);
+        if (endNode && node.r === endNode.r && node.c === endNode.c) {
+          foundEnd = true;
+          return;
+        }
+        for (let ch of node.children) if (!foundEnd) recurse(ch);
+      }
+      recurse(rootNode);
+      return seq;
+    }
+
+    function getDFSPostorderSequence() {
+      let seq = [], foundEnd = false;
+      function recurse(node) {
+        if (!node || foundEnd) return;
+        for (let ch of node.children) if (!foundEnd) recurse(ch);
+        if (!foundEnd) {
+          seq.push(node);
+          if (endNode && node.r === endNode.r && node.c === endNode.c) foundEnd = true;
+        }
+      }
+      recurse(rootNode);
+      return seq;
+    }
+
+    function getAncestorsPath() {
+      let path = [], curr = endNode;
+      while (curr !== null) {
+        path.push(curr.key);
+        curr = curr.parent;
+      }
+      return path.reverse();
+    }
+
+    // --- SISTEMA DE DIÁLOGO (NOVELA VISUAL) ---
+    const DIALOGUES = {
+      welcome: {
+        text: "¡Saludos, Comandante! He inicializado el laberinto estelar. ¿Qué tipo de recorrido de árbol deseas ejecutar para encontrar la ruta hacia la meta 'B'?",
+        choices: [
+          { text: "BFS (Breadth-First)", action: () => runTraversal('BFS') },
+          { text: "DFS Preorder", action: () => runTraversal('PRE') },
+          { text: "DFS Postorder", action: () => runTraversal('POST') }
+        ]
+      },
+      fileLoaded: {
+        text: "¡Archivo .in personalizado cargado con éxito! Se procesó la grilla y el árbol N-Ario. Elige el recorrido que deseas analizar:",
+        choices: [
+          { text: "BFS (Breadth-First)", action: () => runTraversal('BFS') },
+          { text: "DFS Preorder", action: () => runTraversal('PRE') },
+          { text: "DFS Postorder", action: () => runTraversal('POST') }
+        ]
+      },
+      running: { text: "Explorando la red de nodos del árbol N-Ario... Escaneando trayectorias espaciales...", choices: [] },
+      completed: {
+        text: "¡Exploración finalizada con éxito! Se ha iluminado la secuencia completa del recorrido y el camino de Ancestros (Path to Answer) de 'A' hacia 'B'. ¿Deseas probar otro recorrido?",
+        choices: [
+          { text: "Probar BFS", action: () => runTraversal('BFS') },
+          { text: "Probar DFS Preorder", action: () => runTraversal('PRE') },
+          { text: "Probar DFS Postorder", action: () => runTraversal('POST') },
+          { text: "Reiniciar Vista", action: () => { document.getElementById('btnContinueContainer').classList.add('hidden'); initMaze(); showDialogue('welcome'); } }
+        ]
+      }
+    };
+
+    let typeInterval = null;
+
+    function showDialogue(key) {
+      const diag = DIALOGUES[key];
+      const textEl = document.getElementById('dialogueText');
+      const choicesEl = document.getElementById('choicesContainer');
+      
+      textEl.innerHTML = '';
+      choicesEl.innerHTML = '';
+      if (typeInterval) clearInterval(typeInterval);
+
+      let i = 0;
+      typeInterval = setInterval(() => {
+        if (i < diag.text.length) {
+          textEl.innerHTML += diag.text.charAt(i);
+          i++;
+        } else {
+          clearInterval(typeInterval);
+          renderChoices(diag.choices);
+        }
+      }, 15);
+    }
+
+    function renderChoices(choices) {
+      const choicesEl = document.getElementById('choicesContainer');
+      choicesEl.innerHTML = '';
+      choices.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = "pixel-btn text-xs bg-cyan-950 hover:bg-cyan-800 text-cyan-300 border border-cyan-500/50 px-3 py-2 rounded font-mono shadow";
+        btn.innerText = c.text;
+        btn.onclick = c.action;
+        choicesEl.appendChild(btn);
+      });
+    }
+
+    function resumeDialogueAfterInspection() {
+      document.getElementById('btnContinueContainer').classList.add('hidden');
+      if (pendingDialogueKey) {
+        showDialogue(pendingDialogueKey);
+        pendingDialogueKey = null;
+      }
+    }
+
+    // --- CONTROLADOR DE ANIMACIÓN ---
+    function runTraversal(type) {
+      if (isAnimating) return;
+      isAnimating = true;
+      document.getElementById('btnContinueContainer').classList.add('hidden');
+
+      visitedTiles.clear();
+      activePathSet.clear();
+      drawGameCanvas();
+      showDialogue('running');
+
+      let sequence = type === 'BFS' ? getBFSSequence() : (type === 'PRE' ? getDFSPreorderSequence() : getDFSPostorderSequence());
+
+      if (animSpeed === 0) {
+        sequence.forEach(n => visitedTiles.add(n.key));
+        getAncestorsPath().forEach(p => activePathSet.add(p));
+        activeCurrentTile = null;
+        drawGameCanvas();
+        isAnimating = false;
+        pendingDialogueKey = 'completed';
+        document.getElementById('btnContinueContainer').classList.remove('hidden');
+        return;
+      }
+
+      let idx = 0;
+      let stepBatch = Math.max(1, Math.floor(sequence.length / 100));
+
+      let animInterval = setInterval(() => {
+        for (let b = 0; b < stepBatch && idx < sequence.length; b++) {
+          visitedTiles.add(sequence[idx].key);
+          activeCurrentTile = sequence[idx];
+          idx++;
+        }
+        drawGameCanvas();
+
+        if (idx >= sequence.length) {
+          clearInterval(animInterval);
+          activeCurrentTile = null;
+          animateAncestorsPath();
+        }
+      }, animSpeed);
+    }
+
+    function animateAncestorsPath() {
+      let path = getAncestorsPath();
+      
+      if (animSpeed === 0) {
+        path.forEach(p => activePathSet.add(p));
+        drawGameCanvas();
+        isAnimating = false;
+        pendingDialogueKey = 'completed';
+        document.getElementById('btnContinueContainer').classList.remove('hidden');
+        return;
+      }
+
+      let idx = 0;
+      let pathInterval = setInterval(() => {
+        if (idx < path.length) {
+          activePathSet.add(path[idx]);
+          drawGameCanvas();
+          idx++;
+        } else {
+          clearInterval(pathInterval);
+          isAnimating = false;
+          pendingDialogueKey = 'completed';
+          setTimeout(() => document.getElementById('btnContinueContainer').classList.remove('hidden'), 300);
+        }
+      }, Math.max(15, Math.floor(animSpeed * 0.75)));
+    }
+
+    // --- RENDERIZADOR CANVAS 2D CON ASSETS RPG ---
+    function drawGameCanvas() {
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const container = canvas.parentElement;
+
+      const tileSize = Math.max(8, Math.floor(Math.min((container.clientWidth - 32) / cols, (container.clientHeight - 32) / rows)));
+      canvas.width = cols * tileSize;
+      canvas.height = rows * tileSize;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const time = Date.now() * 0.003;
+      const isSmall = tileSize < 16;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = c * tileSize, y = r * tileSize;
+          const key = `${r},${c}`;
+          const cellVal = grid[r][c];
+
+          if (cellVal === '0') {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(x, y, tileSize, tileSize);
+            ctx.fillStyle = '#334155';
+            
+            if (isSmall) {
+              ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+            } else {
+              ctx.beginPath();
+              ctx.roundRect(x + 2, y + 2, tileSize - 4, tileSize - 4, 4);
+              ctx.fill();
+              ctx.fillStyle = '#475569';
+              ctx.fillRect(x + 3, y + 3, tileSize - 6, Math.floor(tileSize * 0.22));
+
+              const p1 = ((r * 7 + c * 13) % 100) / 100;
+              const p2 = ((r * 11 + c * 3) % 100) / 100;
+              ctx.fillStyle = '#1e293b';
+              ctx.beginPath();
+              ctx.arc(x + tileSize * (0.3 + p1 * 0.4), y + tileSize * (0.35 + p2 * 0.3), tileSize * 0.14, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else {
+            ctx.fillStyle = '#0a0e17';
+            ctx.fillRect(x, y, tileSize, tileSize);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+
+            if (!isSmall) {
+              ctx.fillStyle = '#334155';
+              ctx.fillRect(x + 3, y + 3, 2, 2);
+              ctx.fillRect(x + tileSize - 5, y + 3, 2, 2);
+              ctx.fillRect(x + 3, y + tileSize - 5, 2, 2);
+              ctx.fillRect(x + tileSize - 5, y + tileSize - 5, 2, 2);
+            }
+
+            if (visitedTiles.has(key)) {
+              ctx.fillStyle = 'rgba(14, 165, 233, 0.35)';
+              ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+            }
+
+            if (activePathSet.has(key)) {
+              ctx.fillStyle = 'rgba(245, 158, 11, 0.55)';
+              ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = isSmall ? 1 : 2;
+              ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+
+              if (!isSmall) {
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(x + tileSize / 2, y + tileSize / 2, tileSize * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+
+            if (activeCurrentTile && activeCurrentTile.r === r && activeCurrentTile.c === c) {
+              ctx.fillStyle = 'rgba(168, 85, 247, 0.8)';
+              ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+              ctx.strokeStyle = '#c084fc';
+              ctx.lineWidth = 2;
+              ctx.strokeRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+            }
+
+            ctx.strokeStyle = '#1e1b4b';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, tileSize, tileSize);
+          }
+
+          if (cellVal === 'A' || cellVal === 'B') {
+            const isA = cellVal === 'A';
+            const radius = tileSize * 0.38;
+            ctx.fillStyle = isA ? '#065f46' : '#991b1b';
+            ctx.beginPath();
+            ctx.arc(x + tileSize / 2, y + tileSize / 2, radius + (isA ? Math.sin(time * 3) : Math.cos(time * 3)) * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = isA ? '#10b981' : '#f43f5e';
+            ctx.beginPath();
+            ctx.arc(x + tileSize / 2, y + tileSize / 2, radius * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (!isSmall) {
+              ctx.fillStyle = isA ? '#ecfdf5' : '#ffffff';
+              ctx.font = `bold ${Math.floor(tileSize * 0.4)}px 'Press Start 2P', monospace`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(cellVal, x + tileSize / 2, y + tileSize / 2 + 1);
+            }
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
